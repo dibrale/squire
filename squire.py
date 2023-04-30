@@ -34,7 +34,7 @@ params = {'n_ctx': 2048}
 
 # Parse CLI arguments and load parameters
 parser = argparse.ArgumentParser(
-                    prog='Squire',
+                    prog='python squire.py',
                     description='Use llama.cpp with LangChain tools to answer a query. '
                                 'Presently incorporates tools for '
                                 'DuckDuckGo, Arxiv, Wikipedia, Requests and PythonREPL.',
@@ -44,14 +44,14 @@ parser.add_argument('-q', '--question', type=str, default='question.txt',
                     help='path to a *.txt file containing your question')
 parser.add_argument('--template', type=str, default='template.txt',
                     help='path to template *.txt file')
-parser.add_argument('-l', '--llama_path', type=str, default='E:/Llama Zoo/wizardLM-7B.GGML.q4_2.bin',
+parser.add_argument('-l', '--llama_path', type=str, default='wizardLM-7B.GGML.q4_2.bin',
                     help='path to ggml model weights *.bin file')
-parser.add_argument('-v', '--verbose', action='store_true', help='verbose LLM output')  # on/off flag
-parser.add_argument('-p', '--top_p', type=float, default=0.95, help='Llama top_p')
-parser.add_argument('-k', '--top_k', type=float, default=40, help='Llama top_k')
-parser.add_argument('-T', '--temperature', type=float, default=0.2, help='Llama temperature')
-parser.add_argument('-b', '--n_batch', type=float, default=512, help='Llama n_batch')
-parser.add_argument('-t', '--n_threads', type=float, default=6, help='Llama_threads')
+parser.add_argument('-p', '--top_p', type=float, default=0.95)
+parser.add_argument('-k', '--top_k', type=float, default=40)
+parser.add_argument('-T', '--temperature', type=float, default=0.2)
+parser.add_argument('-b', '--n_batch', type=float, default=512)
+parser.add_argument('-t', '--n_threads', type=float, default=6)
+parser.add_argument('-v', '--verbose', default=False, action='store_true', help='verbose AgentExecutor output')
 params.update(vars(parser.parse_args()))
 
 # Make extra sure that the most important parameters are not empty
@@ -258,7 +258,7 @@ agent = LLMSingleActionAgent(
     stop=["\nObservation:"],
     allowed_tools=tool_names
 )
-agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=ALL_TOOLS, verbose=True)
+agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=ALL_TOOLS, verbose=params['verbose'])
 
 # Run the agent executor
 agent_executor.run(params['question_text'])
