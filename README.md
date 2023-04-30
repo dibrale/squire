@@ -37,7 +37,7 @@ Miscellaneous:
 
 | Option  | Description |
 | ------------- | ------------- |
-| -v --verbose | verbose AgentExecutor output |
+| -v --verbose | verbose output |
 
 At present, output is printed into the CLI.
 
