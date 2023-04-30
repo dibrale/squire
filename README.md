@@ -41,6 +41,18 @@ Miscellaneous:
 
 At present, output is printed into the CLI.
 
+## Operation
+
+Squire will ingest default or provided parameters. Assuming this is successful, it will use LangChain to run the provided model using llama.cpp for encoding and inference. The model will choose a tool with which to search for an answer. The available tools have been selected because they do not require an API key and are free to use. Currently available tools:
+
+- DuckDuckGo Search
+- Arxiv
+- Wikipedia
+- Requests
+- PythonREPL
+
+It may take the model several cycles of queries and attempted queries before it obtains satisfactory date to use in a final answer. Once it does obtain adequate data, Squire will issue a final answer in the CLI.
+
 ## Afterword
   
 I hope you find this tool both useful and simple to use. Please let me know if you encounter any issues or have any suggestions.
