@@ -250,6 +250,7 @@ llm = LlamaCpp(
     n_batch=params['n_batch'],
     n_threads=params['n_threads'],
 )
+llm.client.verbose = params['verbose']
 llm_chain = LLMChain(llm=llm, prompt=prompt)
 tool_names = [tool.name for tool in ALL_REAL_TOOLS]
 agent = LLMSingleActionAgent(
