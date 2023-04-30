@@ -1,0 +1,17 @@
+Answer the following questions as best you can. You have access to the following tools:
+
+{tools}
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: I should select a tool that would provide information to answer the question
+Action: one word from [{tool_names}]
+Action Input: you must provide an input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat until there is enough information to give a Final Answer)
+Thought: I must return a final answer as soon as possible based on my observation
+Final Answer: the final answer to the original input question based on information from the observation
+
+Question: {input}
+{agent_scratchpad}
