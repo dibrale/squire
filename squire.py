@@ -262,4 +262,4 @@ agent = LLMSingleActionAgent(
 agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=ALL_TOOLS, verbose=params['verbose'])
 
 # Run the agent executor
-agent_executor.run(params['question_text'])
+print(agent_executor.run(params['question_text']))
