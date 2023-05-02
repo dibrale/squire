@@ -15,7 +15,7 @@ from typing import Union
 import tiktoken
 from langchain import LLMChain
 from langchain.agents import Tool, AgentExecutor, LLMSingleActionAgent, AgentOutputParser
-from langchain.callbacks.base import CallbackManager
+from langchain.callbacks.base import BaseCallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.embeddings import LlamaCppEmbeddings
 from langchain.llms import LlamaCpp
@@ -42,9 +42,11 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('-q', '--question', type=str, default='question.txt',
                     help='path to a *.txt file containing your question')
-parser.add_argument('--template', type=str, default='template.txt',
+parser.add_argument('-m', '--template', type=str, default='template.txt',
                     help='path to template *.txt file')
 parser.add_argument('-l', '--llama_path', type=str, default='wizardLM-7B.GGML.q4_2.bin',
+                    help='path to ggml model weights *.bin file')
+parser.add_argument('-o', '--output', type=str, default='out.txt',
                     help='path to ggml model weights *.bin file')
 parser.add_argument('-p', '--top_p', type=float, default=0.95)
 parser.add_argument('-k', '--top_k', type=float, default=40)
@@ -58,6 +60,7 @@ params.update(vars(parser.parse_args()))
 assert params['template']
 assert params['question']
 assert params['llama_path']
+assert params['output']
 
 # Ensure these parameters are in the correct format and point to actual files
 if params['template'][-4:] != '.txt':
@@ -99,7 +102,7 @@ def non_parse_fcn(inp: str) -> str:
 non_parse_tool = Tool(
     name="NotParsed",
     func=non_parse_fcn,
-    description=""
+    description="Do not use this tool"
 )
 
 # Define the rest of the tools
@@ -107,14 +110,14 @@ search = DuckDuckGoSearchRun()
 search_tool = Tool(
     name="Search",
     func=search.run,
-    description="Responds to general queries of all kinds."
+    description="Responds to general queries of all kinds, including to queries about current events."
 )
 
 arxiv = ArxivAPIWrapper()
 arxiv_tool = Tool(
     name="Arxiv",
     func=arxiv.run,
-    description="Returns information about scientific articles. Limit your Question to 300 characters if using this tool."
+    description="Returns information about scientific articles, but less useful for current events. Limit your Question to 300 characters if using this tool."
 )
 
 wikipedia = WikipediaAPIWrapper()
@@ -139,8 +142,7 @@ repl_tool = Tool(
 )
 
 # Tool lists
-ALL_REAL_TOOLS = [search_tool] + [arxiv_tool] + [wikipedia_tool] + [requests_tool] + [repl_tool]
-ALL_TOOLS = ALL_REAL_TOOLS + [non_parse_tool]
+ALL_TOOLS = [search_tool] + [arxiv_tool] + [wikipedia_tool] + [requests_tool] + [repl_tool] + [non_parse_tool]
 
 # Document, embedding and db definitions.
 docs = [Document(page_content=t.description, metadata={"index": i}) for i, t in enumerate(ALL_TOOLS)]
@@ -238,7 +240,7 @@ class CustomOutputParser(AgentOutputParser):
 
 # Instantiate the output parser, callback manager, LLM, LLM chain, tool names, agent and agent executor
 output_parser = CustomOutputParser()
-callback_manager = CallbackManager([StreamingStdOutCallbackHandler()])
+callback_manager = BaseCallbackManager([StreamingStdOutCallbackHandler()])
 llm = LlamaCpp(
     model_path=params['llama_path'],
     callback_manager=callback_manager,
@@ -248,18 +250,24 @@ llm = LlamaCpp(
     top_k=params['top_k'],
     temperature=params['temperature'],
     n_batch=params['n_batch'],
-    n_threads=params['n_threads'],
+    n_threads=params['n_threads']
 )
 llm.client.verbose = params['verbose']
-llm_chain = LLMChain(llm=llm, prompt=prompt)
-tool_names = [tool.name for tool in ALL_REAL_TOOLS]
+llm_chain = LLMChain(llm=llm, prompt=prompt, verbose=params['verbose'])
+tool_names = [tool.name for tool in ALL_TOOLS]
 agent = LLMSingleActionAgent(
     llm_chain=llm_chain,
     output_parser=output_parser,
     stop=["\nObservation:"],
-    allowed_tools=tool_names
+    allowed_tools=tool_names,
+    verbose=params['verbose']
 )
+
 agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=ALL_TOOLS, verbose=params['verbose'])
 
 # Run the agent executor
-print(agent_executor.run(params['question_text']))
+output = agent_executor.run(params['question_text'])
+
+# Write the output
+with open(params['output'], 'w') as f:
+    f.write(output)
