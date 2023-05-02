@@ -47,7 +47,7 @@ parser.add_argument('-m', '--template', type=str, default='template.txt',
 parser.add_argument('-l', '--llama_path', type=str, default='wizardLM-7B.GGML.q4_2.bin',
                     help='path to ggml model weights *.bin file')
 parser.add_argument('-o', '--output', type=str, default='out.txt',
-                    help='path to ggml model weights *.bin file')
+                    help='path to output file for the final answer')
 parser.add_argument('-p', '--top_p', type=float, default=0.95)
 parser.add_argument('-k', '--top_k', type=float, default=40)
 parser.add_argument('-T', '--temperature', type=float, default=0.2)
