@@ -2,7 +2,7 @@
 
 # Squire - Get Answers with Llama
 
-Use [llama.cpp](https://github.com/ggerganov/llama.cpp) with [LangChain](https://docs.langchain.com/docs/) tools to answer a query. This script is based on the [Custom Agent with Tool Retreival](https://python.langchain.com/en/latest/modules/agents/agents/custom_agent_with_tool_retrieval.html) example from LangChain, with prompt engineering and output parsing modifications to better accomodate Llama models. Squire has been tested with [wizardLM-7B](https://huggingface.co/TheBloke/wizardLM-7B-GGML) and [llama-30b-supercot-ggml](https://huggingface.co/gozfarb/llama-30b-supercot-ggml). Runs as a command line script.
+Use [llama.cpp](https://github.com/ggerganov/llama.cpp) with [LangChain](https://docs.langchain.com/docs/) tools to answer a query. This script is based on the [Custom Agent with Tool Retreival](https://python.langchain.com/en/latest/modules/agents/agents/custom_agent_with_tool_retrieval.html) example from LangChain, with prompt engineering and output parsing modifications to better accomodate Llama models. Runs as a command line script.
 
 ## Installation
 
@@ -20,8 +20,9 @@ Command line options for external files:
 | Option  | Description | Default |
 | ------------- | ------------- | ------------- |
 | -q --question | path to a *.txt file containing your question | question.txt |
-| --template | path to template *.txt file | template.txt |
-| --l | path to ggml model weights *.bin file | wizardLM-7B.GGML.q4_2.bin |
+| -m --template | path to template *.txt file | template.txt |
+| -l --llama_path| path to ggml model weights *.bin file | wizardLM-7B.GGML.q4_2.bin |
+| -o --output | path to output file for the final answer | out.txt |
 
 There are also options to control what parameters the LangChain `LlamaCpp()` forwards to llama.cpp:
 
@@ -37,9 +38,7 @@ Miscellaneous:
 
 | Option  | Description |
 | ------------- | ------------- |
-| -v --verbose | verbose output |
-
-At present, output is printed into the CLI.
+| -v --verbose | verbose output (partially working) |
 
 ## Operation
 
@@ -51,7 +50,7 @@ Squire will ingest default or provided parameters. Assuming this is successful, 
 - Requests
 - PythonREPL
 
-It may take the model several cycles of queries and attempted queries before it obtains satisfactory date to use in a final answer. Once it does obtain adequate data, Squire will issue a final answer in the CLI.
+It may take the model several cycles of queries and attempted queries before it obtains satisfactory data to use in a final answer. Once it does obtain adequate data, Squire will write it to the output file and in command line. Squire has been tested with [wizardLM-7B](https://huggingface.co/TheBloke/wizardLM-7B-GGML) and [llama-30b-supercot-ggml](https://huggingface.co/gozfarb/llama-30b-supercot-ggml), giving answers to the best of its ability. Note that the quality of the output and efficiency of operation will be greatly affected by your choice of local language model.
 
 ## Afterword
   
