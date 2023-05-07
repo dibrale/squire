@@ -47,13 +47,13 @@ parser.add_argument('-q', '--question', type=str, default='question.txt',
                     help='path to a *.txt file containing your question')
 parser.add_argument('-m', '--template', type=str, default='template.txt',
                     help='path to template *.txt file')
-parser.add_argument('-l', '--llama_path', type=str, default='wizardLM-7B.GGML.q4_2.bin',
+parser.add_argument('-l', '--llama_path', type=str, default='E:\Llama Zoo\gozfarb_llama-30b-supercot-ggml\ggml-model-q4_0.bin',
                     help='path to ggml model weights *.bin file')
 parser.add_argument('-o', '--output', type=str, default='out.txt',
                     help='path to output file for the final answer')
-parser.add_argument('-p', '--top_p', type=float, default=0.2)
+parser.add_argument('-p', '--top_p', type=float, default=0.5)
 parser.add_argument('-k', '--top_k', type=float, default=40)
-parser.add_argument('-T', '--temperature', type=float, default=0.5)
+parser.add_argument('-T', '--temperature', type=float, default=0.2)
 parser.add_argument('-b', '--n_batch', type=float, default=512)
 parser.add_argument('-t', '--n_threads', type=float, default=6)
 parser.add_argument('-v', '--verbose', default=False, action='store_true', help='verbose AgentExecutor output')
@@ -314,7 +314,8 @@ llm = LlamaCpp(
 llm.client.verbose = params['verbose']
 llm_chain = LLMChain(llm=llm, prompt=prompt, verbose=params['verbose'])
 
-tool_padding = ['']*(len(ALL_TOOLS)-len(ALL_REAL_TOOLS))
+# Fake tools names not added to tool_names
+tool_padding = ['']*(len(ALL_REAL_TOOLS)-len(ALL_REAL_TOOLS))
 real_tool_names = [tool.name for tool in ALL_REAL_TOOLS]
 tool_names = real_tool_names + tool_padding
 
