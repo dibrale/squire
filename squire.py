@@ -30,7 +30,10 @@ from langchain.utilities import WikipediaAPIWrapper
 from langchain.vectorstores import Chroma
 
 # Initialize parameters, along with any values that should not be changed in command line
-params = {'n_ctx': 2048}
+params = {
+    'n_ctx': 2048,
+    'do_local_date_time': True
+}
 
 # Parse CLI arguments and load parameters
 parser = argparse.ArgumentParser(
@@ -48,9 +51,9 @@ parser.add_argument('-l', '--llama_path', type=str, default='wizardLM-7B.GGML.q4
                     help='path to ggml model weights *.bin file')
 parser.add_argument('-o', '--output', type=str, default='out.txt',
                     help='path to output file for the final answer')
-parser.add_argument('-p', '--top_p', type=float, default=0.95)
+parser.add_argument('-p', '--top_p', type=float, default=0.2)
 parser.add_argument('-k', '--top_k', type=float, default=40)
-parser.add_argument('-T', '--temperature', type=float, default=0.2)
+parser.add_argument('-T', '--temperature', type=float, default=0.5)
 parser.add_argument('-b', '--n_batch', type=float, default=512)
 parser.add_argument('-t', '--n_threads', type=float, default=6)
 parser.add_argument('-v', '--verbose', default=False, action='store_true', help='verbose AgentExecutor output')
@@ -96,13 +99,35 @@ def time(now=datetime.datetime.now()):
 
 # Mock tool that lets us scold the LLM in case of a malformed reply, giving it a chance to improve its next output
 def non_parse_fcn(inp: str) -> str:
-    return 'Your reply could not be parsed. If you have an answer, start your reply with \'Final Answer: \''
+    return 'Your reply could not be parsed. Try again. If you have an answer, start your reply with \'Final Answer: \''
+
+
+# Mock tool to scold the LLM if it does not provide an Action
+def unclear_tool_fcn(inp: str) -> str:
+    return 'No Action was provided. Try again. If you wish to use a tool, write a \'Action: \' followed by the tool name.'
+
+
+# Mock tool that lets us scold the LLM in case of a malformed reply, giving it a chance to improve its next output
+def unclear_input_fcn(inp: str) -> str:
+    return 'No Action Input was provided. Try again. If you wish to use a tool, write a \'Action Input: \' followed by your desired input for it.'
 
 
 non_parse_tool = Tool(
     name="NotParsed",
     func=non_parse_fcn,
-    description="Do not use this tool"
+    description="This is a dummy option. Do not use."
+)
+
+unclear_tool = Tool(
+    name="UnclearTool",
+    func=unclear_tool_fcn,
+    description="This is a dummy option. Do not use."
+)
+
+unclear_input_tool = Tool(
+    name="UnclearInput",
+    func=unclear_input_fcn,
+    description="This is a dummy option. Do not use."
 )
 
 # Define the rest of the tools
@@ -110,21 +135,22 @@ search = DuckDuckGoSearchRun()
 search_tool = Tool(
     name="Search",
     func=search.run,
-    description="Responds to general queries of all kinds, including to queries about current events."
+    description="Responds to general queries of all kinds. Good for current events and conditions."
 )
 
 arxiv = ArxivAPIWrapper()
 arxiv_tool = Tool(
     name="Arxiv",
     func=arxiv.run,
-    description="Returns information about scientific articles, but less useful for current events. Limit your Question to 300 characters if using this tool."
+    description="Returns information about scientific articles. Not good for current events and conditions."
 )
 
 wikipedia = WikipediaAPIWrapper()
 wikipedia_tool = Tool(
     name="Wikipedia",
     func=wikipedia.run,
-    description="Returns introductory encyclopedic information about various topics, but less useful for current events."
+    description="Returns introductory encyclopedic information about various topics. Less useful for current events. "
+                "Not good for current conditions"
 )
 
 requests = TextRequestsWrapper()
@@ -138,11 +164,20 @@ repl = PythonREPL()
 repl_tool = Tool(
     name="PythonREPL",
     func=repl.run,
-    description="Takes python code and gives a numerical answer. You must instruct the tool to print out the answer in order to receive output."
+    description="Action Input must be valid Python code without syntax errors. Instruct the tool to print out an answer if you use it."
 )
 
 # Tool lists
-ALL_TOOLS = [search_tool] + [arxiv_tool] + [wikipedia_tool] + [requests_tool] + [repl_tool] + [non_parse_tool]
+ALL_REAL_TOOLS = [search_tool] \
+            + [arxiv_tool] \
+            + [wikipedia_tool] \
+            + [requests_tool] \
+            + [repl_tool] \
+
+ALL_TOOLS = ALL_REAL_TOOLS \
+            + [non_parse_tool] \
+            + [unclear_tool] \
+            + [unclear_input_tool]
 
 # Document, embedding and db definitions.
 docs = [Document(page_content=t.description, metadata={"index": i}) for i, t in enumerate(ALL_TOOLS)]
@@ -155,6 +190,20 @@ retriever = vector_store.as_retriever()
 def get_tools(query):
     tools_docs = retriever.get_relevant_documents(query)
     return [ALL_TOOLS[d.metadata["index"]] for d in tools_docs]
+
+
+# Extract tool name from 'Action: ' substring, even if the model decides to be a bit too verbose.
+def parse_tool(txt: str):
+    tool_frequency = {}
+
+    for tool in tool_names:
+        tool_frequency.update({tool: len(re.findall(tool, txt))})
+    most_frequent_tool = max(tool_frequency, key=tool_frequency.get)
+
+    if not most_frequent_tool or len(most_frequent_tool) == 0:
+        return 'Unclear'
+    else:
+        return most_frequent_tool
 
 
 # Truncate context for Llama using tiktoken to estimate length
@@ -178,8 +227,10 @@ class CustomPromptTemplate(StringPromptTemplate):
         thoughts = ""
         for action, observation in intermediate_steps:
             thoughts += action.log
-            thoughts += f"\nCurrent Date: {long_date()}"
-            thoughts += f"\nCurrent Local Time: {time()}"
+            if params['do_local_date_time']:
+                thoughts += f"\nCurrent Date: {long_date()}"
+                thoughts += f"\nCurrent Local Time: {time()}"
+                params['do_local_date_time'] = False
             thoughts = llama_squeeze(thoughts, 500)
             thoughts += f"\nObservation: {llama_squeeze(observation, 800)}\nThought: "
 
@@ -222,10 +273,18 @@ class CustomOutputParser(AgentOutputParser):
             action = "NonParseTool"
             action_input = ''
 
-        # If the output is good, load it in the usual LangChain fashion
+        # If the format is good, check the Action and Action Input.
         else:
-            action = match.group('ACTION').strip()
+
+            action_text = match.group('ACTION').strip()
             action_input = match.group('INPUT')
+
+            # First, check the action text for an interpretable action
+            action = parse_tool(action_text)
+
+            # Next, check that the action input is not empty
+            if action_input == '':
+                action = 'UnclearInput'
 
             # Fix small input mistakes for specific tools. For now, just matters for PythonREPL
             if action == "PythonREPL":
@@ -254,7 +313,11 @@ llm = LlamaCpp(
 )
 llm.client.verbose = params['verbose']
 llm_chain = LLMChain(llm=llm, prompt=prompt, verbose=params['verbose'])
-tool_names = [tool.name for tool in ALL_TOOLS]
+
+tool_padding = ['']*(len(ALL_TOOLS)-len(ALL_REAL_TOOLS))
+real_tool_names = [tool.name for tool in ALL_REAL_TOOLS]
+tool_names = real_tool_names + tool_padding
+
 agent = LLMSingleActionAgent(
     llm_chain=llm_chain,
     output_parser=output_parser,
