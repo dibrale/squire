@@ -1,4 +1,4 @@
-Answer the following questions as best you can. You have access to the following tools:
+Answer the following question as best you can. Think about it carefully, avoid mistakes and consider it step by step. You have access to the following tools:
 
 {tools}
 
@@ -11,7 +11,9 @@ Action Input: Provide an input string that will be used by the tool in order to 
 Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can repeat until there is enough information to give a Final Answer)
 Thought: I must return a final answer as soon as possible. My answer must be based on a relevant observation. If I have not yet made a relevant observation, I will choose a different Action. I will not make up an answer.
-Final Answer: the final answer to the original input question based on information from the observation
+Final Answer: the final answer to the original input question based on information from the observation.
 
 Question: {input}
+
+Observation:
 {agent_scratchpad}
