@@ -28,6 +28,7 @@ from langchain.utilities import PythonREPL
 from langchain.utilities import TextRequestsWrapper
 from langchain.utilities import WikipediaAPIWrapper
 from langchain.vectorstores import Chroma
+from requests.exceptions import MissingSchema
 
 # Initialize parameters, along with any values that should not be changed in command line
 params = {
@@ -47,7 +48,8 @@ parser.add_argument('-q', '--question', type=str, default='question.txt',
                     help='path to a *.txt file containing your question')
 parser.add_argument('-m', '--template', type=str, default='template.txt',
                     help='path to template *.txt file')
-parser.add_argument('-l', '--llama_path', type=str, default='E:\Llama Zoo\gozfarb_llama-30b-supercot-ggml\ggml-model-q4_0.bin',
+parser.add_argument('-l', '--llama_path', type=str,
+                    default="ggml-model-q4_0.bin",
                     help='path to ggml model weights *.bin file')
 parser.add_argument('-o', '--output', type=str, default='out.txt',
                     help='path to output file for the final answer')
@@ -112,6 +114,14 @@ def unclear_input_fcn(inp: str) -> str:
     return 'No Action Input was provided. Try again. If you wish to use a tool, write a \'Action Input: \' followed by your desired input for it.'
 
 
+# Better wrapper for Requests
+def squire_requests_wrapper(url):
+    try:
+        TextRequestsWrapper().get(url)
+    except MissingSchema:
+        return 'You need to enter a URL as your Action Input if you are using Requests. Try again.'
+
+
 non_parse_tool = Tool(
     name="NotParsed",
     func=non_parse_fcn,
@@ -156,7 +166,7 @@ wikipedia_tool = Tool(
 requests = TextRequestsWrapper()
 requests_tool = Tool(
     name="Requests",
-    func=requests.get,
+    func=squire_requests_wrapper,
     description="Takes in a URL and fetches raw data from it. Especially useful for plaintext-heavy web content."
 )
 
@@ -315,7 +325,7 @@ llm.client.verbose = params['verbose']
 llm_chain = LLMChain(llm=llm, prompt=prompt, verbose=params['verbose'])
 
 # Fake tools names not added to tool_names
-tool_padding = ['']*(len(ALL_REAL_TOOLS)-len(ALL_REAL_TOOLS))
+tool_padding = ['']*(len(ALL_TOOLS)-len(ALL_REAL_TOOLS))
 real_tool_names = [tool.name for tool in ALL_REAL_TOOLS]
 tool_names = real_tool_names + tool_padding
 
@@ -327,11 +337,13 @@ agent = LLMSingleActionAgent(
     verbose=params['verbose']
 )
 
-agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=ALL_TOOLS, verbose=params['verbose'])
+agent_executor = AgentExecutor.from_agent_and_tools(
+    agent=agent, tools=ALL_REAL_TOOLS, verbose=params['verbose'], max_iterations=3, early_stopping_method='force')
 
 # Run the agent executor
 output = agent_executor.run(params['question_text'])
 
 # Write the output
 with open(params['output'], 'w') as f:
+    output.strip().strip('"').strip()
     f.write(output)
