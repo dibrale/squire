@@ -21,7 +21,7 @@ Command line options for external files:
 | ------------- | ------------- | ------------- |
 | -q --question | path to a *.txt file containing your question | question.txt |
 | -m --template | path to template *.txt file | template.txt |
-| -l --llama_path| path to ggml model weights *.bin file | wizardLM-7B.GGML.q4_2.bin |
+| -l --llama_path| path to ggml model weights *.bin file | ggml-model-q4_0.bin |
 | -o --output | path to output file for the final answer | out.txt |
 
 There are also options to control what parameters the LangChain `LlamaCpp()` forwards to llama.cpp:
@@ -29,7 +29,8 @@ There are also options to control what parameters the LangChain `LlamaCpp()` for
 | Option  | Default |
 | ------------- | ------------- |
 | -p --top_p | 0.95 |
-| -k --top_k | 40 |
+| -r --repeat_penalty | 1.1 |
+| -k --top_k | 30 |
 | -T --temperature | 0.2 |
 | -b --n_batch | 512 |
 | -t -- n_threads | 6 |
@@ -47,8 +48,6 @@ Squire will ingest default or provided parameters. Assuming this is successful, 
 - DuckDuckGo Search
 - Arxiv
 - Wikipedia
-- Requests
-- PythonREPL
 
 It may take the model several cycles of queries and attempted queries before it obtains satisfactory data to use in a final answer. Once it does obtain adequate data, Squire will write it to the output file and in command line. Squire has been tested with [wizardLM-7B](https://huggingface.co/TheBloke/wizardLM-7B-GGML) and [llama-30b-supercot-ggml](https://huggingface.co/gozfarb/llama-30b-supercot-ggml), giving answers to the best of its ability. Note that the quality of the output and efficiency of operation will be greatly affected by your choice of local language model.
 
