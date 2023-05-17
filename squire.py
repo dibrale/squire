@@ -7,6 +7,7 @@
 
 import argparse
 import os
+import time
 
 import langchain
 from langchain import LLMChain, PromptTemplate
@@ -32,8 +33,7 @@ no_data_string = 'No data retrieved.'
 parser = argparse.ArgumentParser(
     prog='python squire.py',
     description='Use llama.cpp with LangChain tools to answer a query. '
-                'Presently incorporates tools for '
-                'DuckDuckGo, Arxiv, Wikipedia, Requests and PythonREPL.',
+                'Presently incorporates tools for DuckDuckGo, Arxiv and Wikipedia',
     epilog='Visit https://github.com/dibrale if you have any questions or concerns about this script.')
 
 parser.add_argument('-q', '--question', type=str, default='question.txt',
@@ -63,7 +63,7 @@ assert params['output']
 
 # Ensure these parameters are in the correct format and point to actual files
 if params['template'][-4:] != '.txt':
-    raise ValueError('Supply a prompt template in a *.txt file with the \'--template\' option.')
+    raise ValueError('Supply a prompt template in a *.txt file with the \'-m\' option.')
 elif os.path.isfile(params['template']):
     with open(params['template'], 'r') as f:
         params.update({'template_text': '\n'.join(f.readlines())})
@@ -100,19 +100,32 @@ def chain_init(tool_wrapper, language_model, verbose=True) -> langchain.agents.i
 
 
 # Wrapper for agents that allows them to retry in case of parse errors
-def agent_wrapper(executor: AgentExecutor, question: str, iterations: int = 3) -> str:
+def agent_wrapper(executor: AgentExecutor, question: str, iterations: int = 5, retry_wait: int = 3) -> str:
     tries_left = iterations
+    exiting = False
     if tries_left < 1:
         tries_left = 0
     while tries_left > 0:
         try:
             out = executor.run(question)
+            exiting = True
             return out
         except langchain.schema.OutputParserException:
             print('\nCould not parse output')
-            tries_left -= 1
+        except ConnectionResetError or ConnectionAbortedError as e:
+            print('\n', e)
             if tries_left > 0:
-                print('Attempts remaining: ' + str(tries_left))
+                print('Waiting ', retry_wait, ' seconds, then retrying')
+                time.sleep(retry_wait)
+        except ConnectionRefusedError as e:
+            print('\n', e)
+            exiting = True
+            tries_left = 0
+        finally:
+            if not exiting:
+                tries_left -= 1
+                if tries_left > 0:
+                    print('Attempts remaining: ' + str(tries_left))
     return no_data_string
 
 
