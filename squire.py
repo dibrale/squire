@@ -42,7 +42,7 @@ parser.add_argument('-m', '--template', type=str, default='template.txt',
                     help='path to template *.txt file')
 parser.add_argument('-l', '--llama_path', type=str,
                     # default="ggml-model-q4_0.bin",
-                    default='E:\Llama Zoo\gpt4all-unfiltered-7b-ggml-q4_0-lora-merged\ggml-model-q4_0.bin',
+                    default='ggml-model-q4_0.bin',
                     help='path to ggml model weights *.bin file')
 parser.add_argument('-o', '--output', type=str, default='out.txt',
                     help='path to output file for the final answer')
