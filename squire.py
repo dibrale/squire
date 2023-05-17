@@ -6,55 +6,49 @@
 # Visit me at https://github.com/dibrale/
 
 import argparse
-import datetime
 import os
-import re
-from typing import Callable
-from typing import Union
 
-import tiktoken
-from langchain import LLMChain
-from langchain.agents import Tool, AgentExecutor, LLMSingleActionAgent, AgentOutputParser
+import langchain
+from langchain import LLMChain, PromptTemplate
+from langchain.agents import Tool, AgentExecutor, initialize_agent, AgentType
 from langchain.callbacks.base import BaseCallbackManager
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from langchain.embeddings import LlamaCppEmbeddings
+from langchain.chains import SequentialChain
 from langchain.llms import LlamaCpp
-from langchain.prompts import StringPromptTemplate
-from langchain.schema import AgentAction, AgentFinish
-from langchain.schema import Document
+from langchain.prompts import MessagesPlaceholder
+from langchain.schema import AgentAction
 from langchain.tools import DuckDuckGoSearchRun
-from langchain.utilities import ArxivAPIWrapper
-from langchain.utilities import PythonREPL
-from langchain.utilities import TextRequestsWrapper
-from langchain.utilities import WikipediaAPIWrapper
-from langchain.vectorstores import Chroma
-from requests.exceptions import MissingSchema
+from langchain.utilities import ArxivAPIWrapper, WikipediaAPIWrapper
 
 # Initialize parameters, along with any values that should not be changed in command line
 params = {
     'n_ctx': 2048,
-    'do_local_date_time': True
+    'verbose': False
 }
+
+no_data_string = 'No data retrieved.'
 
 # Parse CLI arguments and load parameters
 parser = argparse.ArgumentParser(
-                    prog='python squire.py',
-                    description='Use llama.cpp with LangChain tools to answer a query. '
-                                'Presently incorporates tools for '
-                                'DuckDuckGo, Arxiv, Wikipedia, Requests and PythonREPL.',
-                    epilog='Visit https://github.com/dibrale if you have any questions or concerns about this script.')
+    prog='python squire.py',
+    description='Use llama.cpp with LangChain tools to answer a query. '
+                'Presently incorporates tools for '
+                'DuckDuckGo, Arxiv, Wikipedia, Requests and PythonREPL.',
+    epilog='Visit https://github.com/dibrale if you have any questions or concerns about this script.')
 
 parser.add_argument('-q', '--question', type=str, default='question.txt',
                     help='path to a *.txt file containing your question')
 parser.add_argument('-m', '--template', type=str, default='template.txt',
                     help='path to template *.txt file')
 parser.add_argument('-l', '--llama_path', type=str,
-                    default="ggml-model-q4_0.bin",
+                    # default="ggml-model-q4_0.bin",
+                    default='E:\Llama Zoo\gpt4all-unfiltered-7b-ggml-q4_0-lora-merged\ggml-model-q4_0.bin',
                     help='path to ggml model weights *.bin file')
 parser.add_argument('-o', '--output', type=str, default='out.txt',
                     help='path to output file for the final answer')
-parser.add_argument('-p', '--top_p', type=float, default=0.5)
-parser.add_argument('-k', '--top_k', type=float, default=40)
+parser.add_argument('-p', '--top_p', type=float, default=0.8)
+parser.add_argument('-r', '--repeat_penalty', type=float, default=1.1)
+parser.add_argument('-k', '--top_k', type=float, default=30)
 parser.add_argument('-T', '--temperature', type=float, default=0.2)
 parser.add_argument('-b', '--n_batch', type=float, default=512)
 parser.add_argument('-t', '--n_threads', type=float, default=6)
@@ -90,260 +84,84 @@ elif not os.path.isfile(params['llama_path']):
     raise FileNotFoundError(params['llama_path'])
 
 
-# Some timestamp functions to help the LLM orient for current event lookups
-def long_date(now=datetime.datetime.now()):
-    return f"""{now.strftime('%A')}, {now.strftime('%B')} {now.strftime('%d')}, {now.strftime('%Y')}"""
+# 'self ask with search' agent chain initialization function
+def chain_init(tool_wrapper, language_model, verbose=True) -> langchain.agents.initialize:
+
+    # Function to make tools for 'self ask with search'-type agents
+    def make_intermediate(wrapper) -> list[Tool]:
+        return [Tool(name="Intermediate Answer", func=wrapper.run,
+                     description="useful for when you need to ask with search")]
+
+    return initialize_agent(
+        tools=make_intermediate(tool_wrapper),
+        llm=language_model,
+        agent=AgentType.SELF_ASK_WITH_SEARCH,
+        verbose=verbose)
 
 
-def time(now=datetime.datetime.now()):
-    return f"""{now.strftime('%H')}:{now.strftime('%M')}"""
+# Wrapper for agents that allows them to retry in case of parse errors
+def agent_wrapper(executor: AgentExecutor, question: str, iterations: int = 3) -> str:
+    tries_left = iterations
+    if tries_left < 1:
+        tries_left = 0
+    while tries_left > 0:
+        try:
+            out = executor.run(question)
+            return out
+        except langchain.schema.OutputParserException:
+            print('\nCould not parse output')
+            tries_left -= 1
+            if tries_left > 0:
+                print('Attempts remaining: ' + str(tries_left))
+    return no_data_string
 
 
-# Mock tool that lets us scold the LLM in case of a malformed reply, giving it a chance to improve its next output
-def non_parse_fcn(inp: str) -> str:
-    return 'Your reply could not be parsed. Try again. If you have an answer, start your reply with \'Final Answer: \''
+# Declare chat_history variable. Necessary?
+chat_history = MessagesPlaceholder(variable_name="chat_history")
 
-
-# Mock tool to scold the LLM if it does not provide an Action
-def unclear_tool_fcn(inp: str) -> str:
-    return 'No Action was provided. Try again. If you wish to use a tool, write a \'Action: \' followed by the tool name.'
-
-
-# Mock tool that lets us scold the LLM in case of a malformed reply, giving it a chance to improve its next output
-def unclear_input_fcn(inp: str) -> str:
-    return 'No Action Input was provided. Try again. If you wish to use a tool, write a \'Action Input: \' followed by your desired input for it.'
-
-
-# Better wrapper for Requests
-def squire_requests_wrapper(url):
-    try:
-        TextRequestsWrapper().get(url)
-    except MissingSchema:
-        return 'You need to enter a URL as your Action Input if you are using Requests. Try again.'
-
-
-non_parse_tool = Tool(
-    name="NotParsed",
-    func=non_parse_fcn,
-    description="This is a dummy option. Do not use."
-)
-
-unclear_tool = Tool(
-    name="UnclearTool",
-    func=unclear_tool_fcn,
-    description="This is a dummy option. Do not use."
-)
-
-unclear_input_tool = Tool(
-    name="UnclearInput",
-    func=unclear_input_fcn,
-    description="This is a dummy option. Do not use."
-)
-
-# Define the rest of the tools
-search = DuckDuckGoSearchRun()
-search_tool = Tool(
-    name="Search",
-    func=search.run,
-    description="Responds to general queries of all kinds. Good for current events and conditions."
-)
-
-arxiv = ArxivAPIWrapper()
-arxiv_tool = Tool(
-    name="Arxiv",
-    func=arxiv.run,
-    description="Returns information about scientific articles. Not good for current events and conditions."
-)
-
-wikipedia = WikipediaAPIWrapper()
-wikipedia_tool = Tool(
-    name="Wikipedia",
-    func=wikipedia.run,
-    description="Returns introductory encyclopedic information about various topics. Less useful for current events. "
-                "Not good for current conditions"
-)
-
-requests = TextRequestsWrapper()
-requests_tool = Tool(
-    name="Requests",
-    func=squire_requests_wrapper,
-    description="Takes in a URL and fetches raw data from it. Especially useful for plaintext-heavy web content."
-)
-
-repl = PythonREPL()
-repl_tool = Tool(
-    name="PythonREPL",
-    func=repl.run,
-    description="Action Input must be valid Python code without syntax errors. Instruct the tool to print out an answer if you use it."
-)
-
-# Tool lists
-ALL_REAL_TOOLS = [search_tool] \
-            + [arxiv_tool] \
-            + [wikipedia_tool] \
-            + [requests_tool] \
-            + [repl_tool] \
-
-ALL_TOOLS = ALL_REAL_TOOLS \
-            + [non_parse_tool] \
-            + [unclear_tool] \
-            + [unclear_input_tool]
-
-# Document, embedding and db definitions.
-docs = [Document(page_content=t.description, metadata={"index": i}) for i, t in enumerate(ALL_TOOLS)]
-llama_embed = LlamaCppEmbeddings(model_path=params['llama_path'])
-vector_store = Chroma.from_documents(documents=docs, embedding=llama_embed)
-retriever = vector_store.as_retriever()
-
-
-# Tool retrieval function
-def get_tools(query):
-    tools_docs = retriever.get_relevant_documents(query)
-    return [ALL_TOOLS[d.metadata["index"]] for d in tools_docs]
-
-
-# Extract tool name from 'Action: ' substring, even if the model decides to be a bit too verbose.
-def parse_tool(txt: str):
-    tool_frequency = {}
-
-    for tool in tool_names:
-        tool_frequency.update({tool: len(re.findall(tool, txt))})
-    most_frequent_tool = max(tool_frequency, key=tool_frequency.get)
-
-    if not most_frequent_tool or len(most_frequent_tool) == 0:
-        return 'Unclear'
-    else:
-        return most_frequent_tool
-
-
-# Truncate context for Llama using tiktoken to estimate length
-def llama_squeeze(txt, max_tokens=2048, encoding="gpt-3.5-turbo"):
-    enc = tiktoken.encoding_for_model(encoding)
-    encoded_txt = enc.encode(txt, disallowed_special=set())
-    tokens_start = max(0, len(encoded_txt) - max_tokens)
-    truncated_encoded_txt = encoded_txt[tokens_start:]
-    decoded_txt = enc.decode(truncated_encoded_txt)
-    return decoded_txt
-
-
-# Set up a prompt template
-class CustomPromptTemplate(StringPromptTemplate):
-    template: str
-    tools_getter: Callable
-
-    def format(self, **kwargs) -> str:
-        # Get formatted intermediate steps and append the timestamp
-        intermediate_steps = kwargs.pop("intermediate_steps")
-        thoughts = ""
-        for action, observation in intermediate_steps:
-            thoughts += action.log
-            if params['do_local_date_time']:
-                thoughts += f"\nCurrent Date: {long_date()}"
-                thoughts += f"\nCurrent Local Time: {time()}"
-                params['do_local_date_time'] = False
-            thoughts = llama_squeeze(thoughts, 500)
-            thoughts += f"\nObservation: {llama_squeeze(observation, 800)}\nThought: "
-
-        # Set the agent_scratchpad variable to that value
-        kwargs["agent_scratchpad"] = thoughts
-
-        # Create a tools variable and tool names list from the list of tools provided
-        tools = self.tools_getter(kwargs["input"])
-        kwargs["tools"] = "\n".join([f"{tool.name}: {tool.description}" for tool in tools])
-        kwargs["tool_names"] = ", ".join([tool.name for tool in tools])
-
-        return self.template.format(**kwargs)
-
-
-prompt = CustomPromptTemplate(
-    template=params['template_text'],
-    tools_getter=get_tools,
-    input_variables=["input", "intermediate_steps"]
-)
-
-
-# Our version of the output parser
-class CustomOutputParser(AgentOutputParser):
-
-    def parse(self, llm_output: str) -> Union[AgentAction, AgentFinish]:
-
-        # Check if agent should finish
-        if "Final Answer:" in llm_output:
-            return AgentFinish(
-                return_values={"output": llm_output.split("Final Answer:")[-1].strip()},
-                log=llm_output,
-            )
-
-        # Parse out the action and action input
-        regex = r"\n*\s*\d*Action\s*\d*\s*:\s*\d*\s*(?P<ACTION>(\w*))\n*\s*\d*(?:Action)*\n*\s*\d*Input\s*\d*\s*:[\s]*(?P<INPUT>(.*))"
-        match = re.search(regex, llm_output, re.DOTALL)
-
-        # Instead of raising an error due to malformed output, tell our LLM how to do better next time
-        if not match:
-            action = "NonParseTool"
-            action_input = ''
-
-        # If the format is good, check the Action and Action Input.
-        else:
-
-            action_text = match.group('ACTION').strip()
-            action_input = match.group('INPUT')
-
-            # First, check the action text for an interpretable action
-            action = parse_tool(action_text)
-
-            # Next, check that the action input is not empty
-            if action_input == '':
-                action = 'UnclearInput'
-
-            # Fix small input mistakes for specific tools. For now, just matters for PythonREPL
-            if action == "PythonREPL":
-                regex = r".*print((.*)).*"
-                match = re.search(regex, action_input, re.DOTALL)
-                if not match:
-                    action_input = f'print({action_input})'
-
-        # Return the action and action input
-        return AgentAction(tool=action, tool_input=action_input.strip(" ").strip('"'), log=llm_output)
-
-
-# Instantiate the output parser, callback manager, LLM, LLM chain, tool names, agent and agent executor
-output_parser = CustomOutputParser()
-callback_manager = BaseCallbackManager([StreamingStdOutCallbackHandler()])
+# Declare LLM with parameters
 llm = LlamaCpp(
     model_path=params['llama_path'],
-    callback_manager=callback_manager,
+    callback_manager=BaseCallbackManager([StreamingStdOutCallbackHandler()]),
     verbose=params['verbose'],
     n_ctx=params['n_ctx'],
     top_p=params['top_p'],
     top_k=params['top_k'],
+    repeat_penalty=params['repeat_penalty'],
     temperature=params['temperature'],
     n_batch=params['n_batch'],
-    n_threads=params['n_threads']
-)
-llm.client.verbose = params['verbose']
-llm_chain = LLMChain(llm=llm, prompt=prompt, verbose=params['verbose'])
-
-# Fake tools names not added to tool_names
-tool_padding = ['']*(len(ALL_TOOLS)-len(ALL_REAL_TOOLS))
-real_tool_names = [tool.name for tool in ALL_REAL_TOOLS]
-tool_names = real_tool_names + tool_padding
-
-agent = LLMSingleActionAgent(
-    llm_chain=llm_chain,
-    output_parser=output_parser,
-    stop=["\nObservation:"],
-    allowed_tools=tool_names,
-    verbose=params['verbose']
+    n_threads=params['n_threads'],
+    echo=True,
+    # stop=['Human:', 'Result:', 'Observation:']
 )
 
-agent_executor = AgentExecutor.from_agent_and_tools(
-    agent=agent, tools=ALL_REAL_TOOLS, verbose=params['verbose'], max_iterations=3, early_stopping_method='force')
+# Prepare summary prompt and initialize summary chain
+summary_prompt = PromptTemplate(input_variables=['search', 'wiki', 'arxiv'], template=params['template_text'])
+summary_chain = LLMChain(
+    llm=llm,
+    prompt=summary_prompt,
+    verbose=params['verbose'],
+    output_key='summary')
 
-# Run the agent executor
-output = agent_executor.run(params['question_text'])
+# Initialize search agent chains
+search = agent_wrapper(chain_init(DuckDuckGoSearchRun(), llm, params['verbose']), params['question_text'])
+wiki = agent_wrapper(chain_init(WikipediaAPIWrapper(), llm, params['verbose']), params['question_text'])
+arxiv = agent_wrapper(chain_init(ArxivAPIWrapper(), llm, params['verbose']), params['question_text'])
+
+# Initialize overall chain
+overall_chain = SequentialChain(
+    chains=[summary_chain],
+    input_variables=["search", "wiki", "arxiv"],
+    output_variables=['summary'],
+    verbose=params['verbose'])
+
+# Check for no answer condition and output accordingly, or run summary if answer is present
+if search == wiki == arxiv == no_data_string:
+    output = 'Unable to answer the question.'
+else:
+    output = overall_chain.run({'search': search, 'wiki': wiki, 'arxiv': arxiv})
 
 # Write the output
 with open(params['output'], 'w') as f:
-    output.strip().strip('"').strip()
-    f.write(output)
+    output_str = str(output).strip().strip('"').strip()
+    f.write(output_str)
