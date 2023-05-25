@@ -19,10 +19,11 @@ Command line options for external files:
 
 | Option  | Description | Default |
 | ------------- | ------------- | ------------- |
-| -q --question | path to a *.txt file containing your question | question.txt |
-| -m --template | path to template *.txt file | template.txt |
-| -l --llama_path| path to ggml model weights *.bin file | ggml-model-q4_0.bin |
+| -q --question | path to a \*.txt file containing your question | question.txt |
+| -m --template | path to template \*.txt file | template.txt |
+| -l --llama_path| path to ggml model weights \*.bin file | ggml-model-q4_0.bin |
 | -o --output | path to output file for the final answer | out.txt |
+| -w --keyword-template | path to keyword extraction template \*.txt file | keyword-template.txt |
 
 There are also options to control what parameters the LangChain `LlamaCpp()` forwards to llama.cpp:
 
@@ -33,6 +34,7 @@ There are also options to control what parameters the LangChain `LlamaCpp()` for
 | -k --top_k | 30 |
 | -T --temperature | 0.2 |
 | -b --n_batch | 512 |
+| -g --n_gpu_layers | 0 |
 | -t -- n_threads | 6 |
 
 Miscellaneous:

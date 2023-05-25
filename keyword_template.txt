@@ -1,0 +1,8 @@
+### Instruction:
+Your job is to extract keywords from a question, so they can be used in a search engine query. Reply with a list of keywords separated by commas. Do not append or prepend your reply with any other text.
+
+### Input:
+
+{question}
+
+### Response:

@@ -1,12 +1,12 @@
 ### Instruction:
-Your job is to integrate and summarize information obtained from three different sources.
+Your job is to integrate and summarize search results obtained from two different sources in order to answer a question: {question}
+
+Work carefully and avoid mistakes in your answer, keeping in mind that some of the information scraped from these sources may not be relevant to the question.
 
 ### Input:
 
-From DuckDuckGo Search: {search}
+From DuckDuckGo, a search engine: {search}
 
-From Wikipedia: {wiki}
-
-From ArXiv: {arxiv}
+From Wikipedia, the online encyclopedia: {wiki}
 
 ### Response:
