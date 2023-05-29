@@ -16,7 +16,7 @@ colorama==0.4.6
 dataclasses-json==0.5.7
 distro==1.8.0
 duckdb==0.8.0
-duckduckgo-search==3.3.0
+duckduckgo-search==3.6.0
 exceptiongroup==1.1.1
 fastapi==0.95.2
 feedparser==6.0.10

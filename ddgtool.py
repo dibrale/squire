@@ -53,8 +53,8 @@ class DuckDuckGoCustomAPIWrapper(BaseModel):
         """Run query through DuckDuckGo and return concatenated results."""
 
         ddgs = DDGS()
-        # ddgs_text_gen = ddgs.text(query, safesearch=self.safesearch)
-        ddgs_text_gen = ddgs.answers(query)
+        ddgs_text_gen = ddgs.text(query, safesearch=self.safesearch)
+        # ddgs_text_gen = ddgs.answers(query)
 
         snippets = []
         snippet_number = 0
