@@ -50,8 +50,8 @@ parser.add_argument('-w', '--keyword_template', type=str, default='keyword_templ
 parser.add_argument('-m', '--template', type=str, default='template.txt',
                     help='path to template *.txt file')
 parser.add_argument('-l', '--llama_path', type=str,
-                    default="ggml-model-q4_0.bin",
-                    help='path to ggml model weights *.bin file')
+                    default="model.gguf",
+                    help='path to model weights *.gguf file')
 parser.add_argument('-o', '--output', type=str, default='out.txt',
                     help='path to output file for the final answer')
 parser.add_argument('-p', '--top_p', type=float, default=0.7)
@@ -96,8 +96,8 @@ elif os.path.isfile(params['question']):
 else:
     raise FileNotFoundError(params['question'])
 
-if params['llama_path'][-4:] != '.bin':
-    raise ValueError('Supply a path to a ggml model weights *.bin file with the \'-l\' option.')
+if params['llama_path'][-5:] != '.gguf':
+    raise ValueError('Supply a path to a model weights *.gguf file with the \'-l\' option.')
 elif not os.path.isfile(params['llama_path']):
     raise FileNotFoundError(params['llama_path'])
 
