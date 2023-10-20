@@ -16,7 +16,7 @@ colorama==0.4.6
 dataclasses-json==0.5.7
 distro==1.8.0
 duckdb==0.8.0
-duckduckgo-search==3.6.0
+duckduckgo-search==3.9.3
 exceptiongroup==1.1.1
 fastapi==0.95.2
 feedparser==6.0.10
@@ -33,7 +33,7 @@ idna==3.4
 Jinja2==3.1.2
 joblib==1.2.0
 langchain==0.0.179
-llama-cpp-python==0.1.54
+llama-cpp-python==0.2.11
 lz4==4.3.2
 MarkupSafe==2.1.2
 marshmallow-enum==1.5.1
